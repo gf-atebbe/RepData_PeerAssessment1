@@ -1,20 +1,124 @@
 # Reproducible Research: Peer Assessment 1
 
+```{r echo=FALSE}
+setwd('/Users/adam/Documents/code/datasciencecoursera/reproducible_research/RepData_PeerAssessment1')
+```
 
 ## Loading and preprocessing the data
-
+```{r}
+activity <- read.csv('activity.csv', header=TRUE)
+no_missing <- activity[!is.na(activity$steps),]
+```
 
 
 ## What is mean total number of steps taken per day?
+```{r}
+total_by_day <- by(no_missing$steps, no_missing$date, FUN=sum)
+hist(total_by_day, main='Total number of steps taken each day', xlab='Total steps per day', col='lightblue')
+```
 
+Mean and median by day:
+```{r results='asis'}
+library(xtable)
+summaries <- merge(as.data.frame(as.matrix(by(no_missing$steps, no_missing$date, FUN=mean))), 
+                   as.data.frame(as.matrix(by(no_missing$steps, no_missing$date, FUN=median))), 
+                   by="row.names", all=TRUE)
+colnames(summaries) <- c("Date", "Mean", "Median")
+xt <- xtable(summaries)
+print(xt, type="html")
+```
 
 
 ## What is the average daily activity pattern?
+```{r}
+intervals <- as.data.frame(as.matrix(by(no_missing$steps, no_missing$interval, FUN=mean)))
+intervals$interval <- rownames(intervals)
+plot(rownames(intervals), intervals$V1, main='Average number of steps taken by interval', xlab='5-Minute Interval', ylab='Average Steps', type='l', col='darkblue')
+```
 
-
+Maximum average number of steps:
+```{r}
+intervals[intervals$V1 == max(intervals$V1), 2]
+```
 
 ## Imputing missing values
+1. The total number of missing values in the dataset
+```{r}
+length(activity[is.na(activity$steps), 1])
+```
 
+2. Devise a strategy for filling in all of the missing values in the dataset
 
+The median value for the interval with the missing value will be used.  
+Using the mean of the interval has no effect on the data.
+
+3. Create a new dataset that is equal to the original dataset but with the missing data filled in.
+```{r}
+intervals_median <- as.data.frame(as.matrix(by(no_missing$steps, no_missing$interval, FUN=median)))
+intervals_median$interval <- rownames(intervals_median)
+
+fillMissing <- function(row) {
+    if(is.na(row$steps)) {
+        intervals_median[intervals_median$interval == row$interval, "V1"]   
+    } else {
+        row$steps
+    }
+}
+
+imputed <- cbind(activity)
+imputed$steps <- as.numeric(by(imputed, 1:nrow(activity), FUN=fillMissing))
+```
+
+4. The mean and median total number of steps taken per day
+```{r}
+total_by_day_filled <- by(imputed$steps, imputed$date, FUN=sum)
+hist(total_by_day_filled, main='Total number of steps taken each day', xlab='Total steps per day', col='lightblue')
+```
+
+   Mean and median by day:
+```{r results='asis'}
+summaries_filled <- merge(as.data.frame(as.matrix(by(imputed$steps, imputed$date, FUN=mean))), 
+                          as.data.frame(as.matrix(by(imputed$steps, imputed$date, FUN=median))), 
+                          by="row.names", all=TRUE)
+colnames(summaries_filled) <- c("Date", "Mean", "Median")
+xt <- xtable(summaries_filled)
+print(xt, type="html")
+```
+
+   Do these values differ from the estimates from the first part of the assignment? 
+```{r}
+print(summaries_filled$Mean - summaries$Mean)
+print(summaries_filled$Median - summaries$Median)
+```
+ 
+   What is the impact of imputing missing data on the estimates of the total daily number of steps?
+
+There is no impact on the data at a day-by-day level.  
+As shown in the histogram above, there is an impact on the first bin, which includes 0 steps per day.
+Since the median value was used to impute the missing values for each interval, in all cases it appears the imputed value was zero.
+This changes the histogram but has no net effect on the data at a day-by-day level.
 
 ## Are there differences in activity patterns between weekdays and weekends?
+```{r}
+imputed$dow <- weekdays(as.Date(imputed$date, '%Y-%m-%d'), FALSE)
+setDow <- function(row) {
+    if(row$dow == 'Saturday') {
+        'weekend'   
+    } else if (row$dow == 'Sunday') {
+        'weekend'
+    } else {
+        'weekday'
+    }
+}
+imputed$daytype <- as.factor(by(imputed, 1:nrow(imputed), FUN=setDow))
+```
+
+```{r}
+weekday_avg <- as.data.frame(as.matrix(by(imputed[imputed$daytype=='weekday', "steps"], imputed[imputed$daytype=='weekday', "interval"], FUN=mean)))
+
+weekend_avg <- as.data.frame(as.matrix(by(imputed[imputed$daytype=='weekend', "steps"], imputed[imputed$daytype=='weekend', "interval"], FUN=mean)))
+
+par(mfrow=c(2,1), mar=c(4,3,3,2))
+plot(rownames(weekend_avg), weekend_avg$V1, type='l', main='weekend', xlab='Interval', ylab='Average number of steps')
+plot(rownames(weekday_avg), weekday_avg$V1, type='l', main='weekday', xlab='Interval', ylab='Average number of steps')
+```
